@@ -4,6 +4,37 @@ import { getDb } from '../db/database.js'
 
 const router = Router()
 
+router.get('/', (req: Request, res: Response): void => {
+  try {
+    const { projectId } = req.query
+    const db = getDb()
+    let sql = 'SELECT o.*, u.username as submitter_name, u.org_name as submitter_org FROM objections o LEFT JOIN users u ON o.submitter_id = u.id WHERE 1=1'
+    const params: any[] = []
+    if (projectId) { sql += ' AND o.project_id = ?'; params.push(projectId) }
+    sql += ' ORDER BY o.created_at DESC'
+    const rows = db.prepare(sql).all(...params) as any[]
+    res.json({ success: true, data: rows.map(r => ({
+      ...r,
+      evidence: JSON.parse(r.evidence || '[]'),
+    })) })
+  } catch (error) {
+    res.status(500).json({ success: false, error: '获取异议列表失败' })
+  }
+})
+
+router.get('/:projectId', (req: Request, res: Response): void => {
+  try {
+    const db = getDb()
+    const rows = db.prepare('SELECT o.*, u.username as submitter_name, u.org_name as submitter_org FROM objections o LEFT JOIN users u ON o.submitter_id = u.id WHERE o.project_id = ? ORDER BY o.created_at DESC').all(req.params.projectId) as any[]
+    res.json({ success: true, data: rows.map(r => ({
+      ...r,
+      evidence: JSON.parse(r.evidence || '[]'),
+    })) })
+  } catch (error) {
+    res.status(500).json({ success: false, error: '获取异议列表失败' })
+  }
+})
+
 router.post('/', (req: Request, res: Response): void => {
   try {
     const { projectId, submitterId, content, evidence } = req.body
@@ -15,8 +46,8 @@ router.post('/', (req: Request, res: Response): void => {
     const id = uuidv4()
     db.prepare(`INSERT INTO objections (id, project_id, submitter_id, content, evidence)
       VALUES (?, ?, ?, ?, ?)`).run(id, projectId, submitterId, content, JSON.stringify(evidence || []))
-    const objection = db.prepare('SELECT * FROM objections WHERE id = ?').get(id) as any
-    res.status(201).json({ success: true, data: objection })
+    const objection = db.prepare('SELECT o.*, u.username as submitter_name, u.org_name as submitter_org FROM objections o LEFT JOIN users u ON o.submitter_id = u.id WHERE o.id = ?').get(id) as any
+    res.status(201).json({ success: true, data: { ...objection, evidence: JSON.parse(objection.evidence || '[]') } })
   } catch (error) {
     res.status(500).json({ success: false, error: '提交异议失败' })
   }
@@ -47,8 +78,8 @@ router.post('/:id/approve', (req: Request, res: Response): void => {
     db.prepare(`UPDATE objections SET ${cols.statusCol} = ?, ${cols.commentCol} = ?, updated_at = datetime('now') WHERE id = ?`).run(
       status, comment || null, req.params.id,
     )
-    const updated = db.prepare('SELECT * FROM objections WHERE id = ?').get(req.params.id) as any
-    res.json({ success: true, data: updated })
+    const updated = db.prepare('SELECT o.*, u.username as submitter_name, u.org_name as submitter_org FROM objections o LEFT JOIN users u ON o.submitter_id = u.id WHERE o.id = ?').get(req.params.id) as any
+    res.json({ success: true, data: { ...updated, evidence: JSON.parse(updated.evidence || '[]') } })
   } catch (error) {
     res.status(500).json({ success: false, error: '审批异议失败' })
   }

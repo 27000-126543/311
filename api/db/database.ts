@@ -149,6 +149,7 @@ function seedData(db: Database.Database): void {
     const userIds: Record<string, string> = {
       tenderer1: uuidv4(),
       bidder1: uuidv4(),
+      bidder2: uuidv4(),
       expert1: uuidv4(),
       admin1: uuidv4(),
       supervisor1: uuidv4(),
@@ -161,6 +162,7 @@ function seedData(db: Database.Database): void {
 
     insertUser.run(userIds.tenderer1, 'tenderer1', '123456', 'tenderer', '华北建设集团', 100, now)
     insertUser.run(userIds.bidder1, 'bidder1', '123456', 'bidder', '华东科技有限公司', 85, now)
+    insertUser.run(userIds.bidder2, 'bidder2', '123456', 'bidder', '华信建设工程有限公司', 42, now)
     insertUser.run(userIds.expert1, 'expert1', '123456', 'expert', '工程技术研究院', 100, now)
     insertUser.run(userIds.admin1, 'admin1', '123456', 'admin', '招标管理中心', 100, now)
     insertUser.run(userIds.supervisor1, 'supervisor1', '123456', 'supervisor', '政府采购监管局', 100, now)

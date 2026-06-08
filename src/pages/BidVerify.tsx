@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { CheckCircle, XCircle, ArrowLeft } from 'lucide-react'
 import { api } from '@/utils/api'
 
@@ -13,24 +13,40 @@ interface VerifyData {
   passed: boolean
   checks: CheckItem[]
   rejectReason?: string
+  creditScore?: number
+  status?: string
+  projectName?: string
 }
 
 export default function BidVerify() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const location = useLocation()
-  const stateData = location.state as VerifyData | null
-
-  const [data, setData] = useState<VerifyData | null>(stateData || null)
-  const [loading, setLoading] = useState(!stateData)
+  const [data, setData] = useState<VerifyData | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (stateData) return
-    api.get<VerifyData>(`/bids/${id}/verify`)
-      .then(setData)
+    if (!id) return
+    api.get<{ success: boolean; data: any }>(`/bids/${id}/verify`)
+      .then((res) => {
+        const d = (res as any).data || res
+        const vr = d.verify_result || {}
+        const checks = vr.checks || [
+          { name: '营业执照有效期', passed: vr.licenseValid ?? true, message: vr.licenseValid !== false ? '营业执照在有效期内' : '营业执照已过期或无效' },
+          { name: '业绩匹配度', passed: vr.performanceMatch ?? true, message: vr.performanceMatch !== false ? '业绩满足项目要求' : '业绩不满足项目要求' },
+          { name: '信用分达标', passed: vr.creditPassed ?? true, message: vr.creditPassed !== false ? `信用分 ${vr.creditScore ?? 100} 分，达到最低要求` : `信用分 ${vr.creditScore ?? 0} 分，低于最低要求 60 分` },
+        ]
+        setData({
+          passed: d.passed ?? (d.status === 'verified'),
+          checks,
+          rejectReason: d.rejectReason || d.reject_reason || undefined,
+          creditScore: vr.creditScore,
+          status: d.status,
+          projectName: d.projectName || d.project_name,
+        })
+      })
       .catch(() => setData(null))
       .finally(() => setLoading(false))
-  }, [id, stateData])
+  }, [id])
 
   if (loading) {
     return (
@@ -72,6 +88,11 @@ export default function BidVerify() {
           <p className={`text-sm mt-1 ${data.passed ? 'text-green-600' : 'text-red-600'}`}>
             {data.passed ? '您的投标已通过自动校验，等待审核' : '您的投标未通过自动校验，请根据原因修改后重新提交'}
           </p>
+          {data.creditScore !== undefined && (
+            <div className={`mt-2 text-sm ${data.passed ? 'text-green-600' : 'text-red-600'}`}>
+              当前信用分：<strong>{data.creditScore}</strong> 分
+            </div>
+          )}
         </div>
 
         <div className="px-8 py-6">

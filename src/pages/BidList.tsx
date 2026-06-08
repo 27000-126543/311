@@ -8,12 +8,14 @@ type BidStatus = 'pending' | 'verified' | 'rejected' | 'opened' | 'scored'
 
 interface Bid {
   id: string
-  projectId: string
-  projectName: string
+  project_id: string
+  project_name?: string
+  projectName?: string
   quote: number
   status: BidStatus
-  submittedAt: string
-  rejectReason?: string
+  created_at: string
+  reject_reason?: string
+  key_params?: Record<string, string>
   keyParams?: Record<string, string>
 }
 
@@ -42,13 +44,22 @@ export default function BidList() {
 
   useEffect(() => {
     if (!user) return
-    api.get<Bid[]>('/bids?bidderId=' + user.id)
-      .then(setBids)
+    setLoading(true)
+    api.get<{ success: boolean; data: Bid[] }>('/bids?bidderId=' + user.id)
+      .then((res) => {
+        const list = (res as any).data || res
+        setBids(Array.isArray(list) ? list : [])
+      })
       .catch(() => setBids([]))
       .finally(() => setLoading(false))
   }, [user])
 
   const filtered = activeTab === 'all' ? bids : bids.filter((b) => b.status === activeTab)
+  const getName = (b: Bid) => b.projectName || b.project_name || '未知项目'
+  const getParams = (b: Bid) => b.keyParams || b.key_params
+  const getReason = (b: Bid) => b.reject_reason
+  const getProjectId = (b: Bid) => b.project_id || b.projectId
+  const getTime = (b: Bid) => b.created_at ? new Date(b.created_at).toLocaleString('zh-CN') : '--'
 
   return (
     <div className="animate-fade-in">
@@ -91,10 +102,10 @@ export default function BidList() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <Link
-                      to={`/projects/${bid.projectId}`}
+                      to={`/projects/${getProjectId(bid)}`}
                       className="text-lg font-semibold text-[#0F2B46] hover:text-[#C8A45C] transition-colors truncate"
                     >
-                      {bid.projectName}
+                      {getName(bid)}
                     </Link>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig[bid.status].color}`}>
                       {statusConfig[bid.status].label}
@@ -107,13 +118,13 @@ export default function BidList() {
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock size={14} />
-                      提交时间：{bid.submittedAt}
+                      提交时间：{getTime(bid)}
                     </span>
                   </div>
 
-                  {bid.keyParams && Object.keys(bid.keyParams).length > 0 && (
+                  {getParams(bid) && Object.keys(getParams(bid)!).length > 0 && (
                     <div className="mt-2 flex gap-3 flex-wrap">
-                      {Object.entries(bid.keyParams).map(([k, v]) => (
+                      {Object.entries(getParams(bid)!).map(([k, v]) => (
                         <span key={k} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
                           {k}：{v}
                         </span>
@@ -133,9 +144,9 @@ export default function BidList() {
                 )}
               </div>
 
-              {bid.status === 'rejected' && bid.rejectReason && (
+              {bid.status === 'rejected' && getReason(bid) && (
                 <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">
-                  退回原因：{bid.rejectReason}
+                  退回原因：{getReason(bid)}
                 </div>
               )}
             </div>

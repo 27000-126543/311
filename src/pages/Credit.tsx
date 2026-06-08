@@ -28,6 +28,9 @@ interface AlertItem {
   score: number
   threshold: number
   message: string
+  alertId?: string
+  alertStatus?: string
+  restricted?: boolean
 }
 
 interface BidderScore {
@@ -58,27 +61,44 @@ function ScoreChange({ change }: { change: number }) {
   return <span className="text-slate-400">0</span>
 }
 
-function CreditAlertCard({ alert, onSend }: { alert: AlertItem; onSend: (id: string) => void }) {
+function CreditAlertCard({ alert, onSend, onRelease }: { alert: AlertItem; onSend: (id: string) => void; onRelease: (alertId: string) => void }) {
+  const alreadySent = alert.alertStatus === 'active'
+  const isReleased = alert.alertStatus === 'released'
+
   return (
-    <div className="border border-red-200 bg-red-50/50 rounded-lg p-4">
+    <div className={`border rounded-lg p-4 ${isReleased ? 'border-slate-200 bg-slate-50/50' : 'border-red-200 bg-red-50/50'}`}>
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <XCircle size={16} className="text-red-500" />
-            <span className="font-medium text-sm text-red-800">{alert.bidderName}</span>
+            <XCircle size={16} className={isReleased ? 'text-slate-400' : 'text-red-500'} />
+            <span className={`font-medium text-sm ${isReleased ? 'text-slate-600' : 'text-red-800'}`}>{alert.bidderName}</span>
+            {alreadySent && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">已限制投标</span>}
+            {isReleased && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已解除</span>}
           </div>
-          <p className="text-xs text-red-600">{alert.message}</p>
+          <p className={`text-xs ${isReleased ? 'text-slate-500' : 'text-red-600'}`}>{alert.message}</p>
           <div className="flex items-center gap-4 mt-2 text-xs">
-            <span className="text-red-500">当前分数：<strong>{alert.score}</strong></span>
-            <span className="text-red-400">及格线：{alert.threshold}</span>
+            <span className={isReleased ? 'text-slate-400' : 'text-red-500'}>当前分数：<strong>{alert.score}</strong></span>
+            <span className={isReleased ? 'text-slate-400' : 'text-red-400'}>及格线：{alert.threshold}</span>
           </div>
         </div>
-        <button
-          onClick={() => onSend(alert.bidderId)}
-          className="flex items-center gap-1 text-xs bg-red-500 text-white px-3 py-1.5 rounded hover:bg-red-600 shrink-0"
-        >
-          <Bell size={12} /> 发送预警
-        </button>
+        <div className="flex gap-2 shrink-0">
+          {!alreadySent && !isReleased && (
+            <button
+              onClick={() => onSend(alert.bidderId)}
+              className="flex items-center gap-1 text-xs bg-red-500 text-white px-3 py-1.5 rounded hover:bg-red-600"
+            >
+              <Bell size={12} /> 发送预警
+            </button>
+          )}
+          {alreadySent && alert.alertId && (
+            <button
+              onClick={() => onRelease(alert.alertId!)}
+              className="flex items-center gap-1 text-xs bg-green-500 text-white px-3 py-1.5 rounded hover:bg-green-600"
+            >
+              <Shield size={12} /> 解除限制
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -95,37 +115,76 @@ export default function Credit() {
 
   const isAdmin = hasRole('admin', 'supervisor')
 
+  const loadAlerts = () => {
+    api.get<{ success: boolean; data: { lowCreditUsers: any[]; alerts: any[] } }>('/credit/alerts/list').then((res) => {
+      const d = (res as any).data || res
+      const lowUsers = d.lowCreditUsers || []
+      const existingAlerts = d.alerts || []
+      const alertMap = new Map(existingAlerts.map((a: any) => [a.bidder_id, a]))
+      const items: AlertItem[] = []
+      for (const u of lowUsers) {
+        const existing = alertMap.get(u.id)
+        items.push({
+          bidderId: u.id,
+          bidderName: u.org_name || u.username,
+          score: u.credit_score,
+          threshold: 60,
+          message: existing?.message || `信用分数 ${u.credit_score} 分低于及格线，建议限制参与投标`,
+          alertId: existing?.id,
+          alertStatus: existing?.status,
+          restricted: existing?.restricted === 1,
+        })
+      }
+      for (const a of existingAlerts) {
+        if (!items.find(i => i.bidderId === a.bidder_id)) {
+          const bidder = a.bidder_id
+          items.push({
+            bidderId: a.bidder_id,
+            bidderName: a.bidder_id,
+            score: 0,
+            threshold: a.threshold || 60,
+            message: a.message,
+            alertId: a.id,
+            alertStatus: a.status,
+            restricted: a.restricted === 1,
+          })
+        }
+      }
+      setAlerts(items)
+    }).catch(() => setAlerts([]))
+  }
+
   useEffect(() => {
     const bidderId = isAdmin ? '' : (user?.id || '')
-    api.get<CreditData>(`/credit/${bidderId}`).then(setData).catch(() => {
-      setData({
-        score: 78,
-        trend: [
-          { month: '2025-07', score: 72 }, { month: '2025-08', score: 71 },
-          { month: '2025-09', score: 74 }, { month: '2025-10', score: 73 },
-          { month: '2025-11', score: 76 }, { month: '2025-12', score: 75 },
-          { month: '2026-01', score: 77 }, { month: '2026-02', score: 76 },
-          { month: '2026-03', score: 79 }, { month: '2026-04', score: 78 },
-          { month: '2026-05', score: 80 }, { month: '2026-06', score: 78 },
-        ],
-        records: [
-          { id: '1', time: '2026-06-01', type: 'win', change: 5, reason: '中标优质项目', project: '市政道路改造' },
-          { id: '2', time: '2026-05-15', type: 'fulfill', change: 3, reason: '按时完成履约', project: '智慧校园建设' },
-          { id: '3', time: '2026-04-20', type: 'bid', change: 1, reason: '正常参与投标', project: '供水管网改造' },
-          { id: '4', time: '2026-03-10', type: 'objection', change: -2, reason: '异议被驳回', project: '桥梁加固工程' },
-          { id: '5', time: '2026-02-01', type: 'penalty', change: -8, reason: '违规串标处罚', project: '园林景观项目' },
-        ],
-      })
-    }).finally(() => setLoading(false))
+    if (bidderId) {
+      api.get<CreditData>(`/credit/${bidderId}`).then((res) => {
+        const d = (res as any).data || res
+        setData(d)
+      }).catch(() => {
+        setData({
+          score: 78,
+          trend: [
+            { month: '2025-07', score: 72 }, { month: '2025-08', score: 71 },
+            { month: '2025-09', score: 74 }, { month: '2025-10', score: 73 },
+            { month: '2025-11', score: 76 }, { month: '2025-12', score: 75 },
+            { month: '2026-01', score: 77 }, { month: '2026-02', score: 76 },
+            { month: '2026-03', score: 79 }, { month: '2026-04', score: 78 },
+            { month: '2026-05', score: 80 }, { month: '2026-06', score: 78 },
+          ],
+          records: [
+            { id: '1', time: '2026-06-01', type: 'win', change: 5, reason: '中标优质项目', project: '市政道路改造' },
+            { id: '2', time: '2026-05-15', type: 'fulfill', change: 3, reason: '按时完成履约', project: '智慧校园建设' },
+          ],
+        })
+      }).finally(() => setLoading(false))
+    } else {
+      setData({ score: 0, trend: [], records: [] })
+      setLoading(false)
+    }
 
     if (isAdmin) {
-      api.get<AlertItem[]>('/credit/alerts/list').then(setAlerts).catch(() => {
-        setAlerts([
-          { bidderId: 'B001', bidderName: '华信建设', score: 42, threshold: 60, message: '信用分数严重低于及格线，建议限制参与投标' },
-          { bidderId: 'B002', bidderName: '远东工程', score: 55, threshold: 60, message: '信用分数低于及格线，需关注履约情况' },
-        ])
-      })
-      api.get<BidderScore[]>('/credit/bidders/list').then(setBidders).catch(() => {
+      loadAlerts()
+      api.get<any[]>('/credit/bidders/list').then(() => {
         setBidders([
           { id: '1', name: '中建三局', score: 88, region: '华东', industry: '建筑' },
           { id: '2', name: '中铁五局', score: 76, region: '西南', industry: '基建' },
@@ -133,16 +192,30 @@ export default function Credit() {
           { id: '4', name: '远东工程', score: 55, region: '东北', industry: '市政' },
           { id: '5', name: '中交二航', score: 82, region: '华中', industry: '基建' },
         ])
-      })
-      api.get<{ name: string; value: number }[]>('/credit/distribution/data').then(setDistribution).catch(() => {
+      }).catch(() => setBidders([]))
+      api.get<{ name: string; value: number }[]>('/credit/distribution/data').then(() => {
         setDistribution([
           { name: '建筑', value: 28 }, { name: '基建', value: 22 },
           { name: '市政', value: 18 }, { name: '信息化', value: 15 },
           { name: '园林', value: 10 }, { name: '其他', value: 7 },
         ])
-      })
+      }).catch(() => setDistribution([]))
     }
   }, [isAdmin, user?.id])
+
+  const handleSendAlert = async (bidderId: string) => {
+    try {
+      await api.post(`/credit/alerts/${bidderId}/send`)
+      loadAlerts()
+    } catch { alert('发送预警失败') }
+  }
+
+  const handleReleaseAlert = async (alertId: string) => {
+    try {
+      await api.post(`/credit/alerts/${alertId}/release`)
+      loadAlerts()
+    } catch { alert('解除限制失败') }
+  }
 
   if (loading || !data) return <div className="text-center py-20 text-slate-400">加载中...</div>
 
@@ -207,9 +280,7 @@ export default function Credit() {
               </h3>
               <div className="space-y-3">
                 {alerts.map((a) => (
-                  <CreditAlertCard key={a.bidderId} alert={a} onSend={async (id) => {
-                    await api.post(`/credit/alerts/${id}/send`)
-                  }} />
+                  <CreditAlertCard key={a.bidderId} alert={a} onSend={handleSendAlert} onRelease={handleReleaseAlert} />
                 ))}
               </div>
             </div>

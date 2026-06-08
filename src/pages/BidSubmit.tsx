@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Upload, Plus, X, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react'
 import { api } from '@/utils/api'
+import { useAuthStore } from '@/stores/authStore'
 
 interface ProjectInfo {
+  id: string
   name: string
   budget: number
   industry: string
@@ -16,6 +18,8 @@ interface ProjectInfo {
 interface VerifyResult {
   passed: boolean
   checks: { name: string; passed: boolean; message: string }[]
+  rejectReason?: string
+  creditScore?: number
 }
 
 interface UploadedFile {
@@ -27,6 +31,7 @@ interface UploadedFile {
 export default function BidSubmit() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [quote, setQuote] = useState('')
   const [keyParams, setKeyParams] = useState<{ key: string; value: string }[]>([{ key: '', value: '' }])
@@ -74,18 +79,33 @@ export default function BidSubmit() {
   }
 
   const handleSubmit = async () => {
-    if (!quote || !projectId) return
+    if (!quote || !projectId || !user) return
     setSubmitting(true)
     try {
-      const res = await api.post<{ id: string }>('/bids', {
+      const bidRes = await api.post<{ success: boolean; data: { id: string } }>('/bids', {
         projectId,
+        bidderId: user.id,
         quote: Number(quote),
         documents: [...documents, ...license, ...performance],
         keyParams: Object.fromEntries(keyParams.filter((p) => p.key).map((p) => [p.key, p.value])),
       })
-      const verifyRes = await api.post<VerifyResult>(`/bids/${res.id}/verify`)
-      setVerifyResult(verifyRes)
-    } catch {
+      const bidId = bidRes.data?.id || (bidRes as any).id
+      if (!bidId) { alert('投标保存失败'); setSubmitting(false); return }
+      const verifyRes = await api.post<{ success: boolean; data: any }>(`/bids/${bidId}/verify`)
+      const vd = verifyRes.data || verifyRes
+      const vr = vd.verify_result || vd
+      const checks = vr.checks || [
+        { name: '营业执照有效期', passed: vr.licenseValid ?? true, message: vr.licenseValid !== false ? '营业执照在有效期内' : '营业执照已过期或无效' },
+        { name: '业绩匹配度', passed: vr.performanceMatch ?? true, message: vr.performanceMatch !== false ? '业绩满足项目要求' : '业绩不满足项目要求' },
+        { name: '信用分达标', passed: vr.creditPassed ?? true, message: vr.creditPassed !== false ? `信用分 ${vr.creditScore ?? user.creditScore ?? 100} 分，达到最低要求` : `信用分 ${vr.creditScore ?? 0} 分，低于最低要求 60 分` },
+      ]
+      setVerifyResult({
+        passed: vd.status === 'verified',
+        checks,
+        rejectReason: vd.reject_reason || vd.rejectReason || undefined,
+        creditScore: vr.creditScore,
+      })
+    } catch (e) {
       alert('提交失败，请重试')
     } finally {
       setSubmitting(false)
@@ -120,6 +140,11 @@ export default function BidSubmit() {
                 </div>
               ))}
             </div>
+            {verifyResult.rejectReason && (
+              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-600 text-left">
+                退回原因：{verifyResult.rejectReason}
+              </div>
+            )}
           </>
         )}
         <button
