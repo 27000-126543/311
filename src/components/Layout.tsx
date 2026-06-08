@@ -16,6 +16,7 @@ import {
   LogOut,
   ChevronLeft,
   Building2,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface NavItem {
@@ -44,11 +45,16 @@ const roleNav: Record<string, NavItem[]> = {
   admin: [
     { path: '/experts', label: '专家抽取', icon: <Users size={18} />, roles: ['admin'] },
     { path: '/analytics', label: '数据分析', icon: <BarChart3 size={18} />, roles: ['admin'] },
+    { path: '/credit', label: '信用监管', icon: <Shield size={18} />, roles: ['admin'] },
+    { path: '/restrictions', label: '限制名单', icon: <Scale size={18} />, roles: ['admin'] },
+    { path: '/overdue-milestones', label: '逾期履约', icon: <AlertTriangle size={18} />, roles: ['admin'] },
     { path: '/objections/_list', label: '异议管理', icon: <Scale size={18} />, roles: ['admin'] },
   ],
   supervisor: [
     { path: '/analytics', label: '数据分析', icon: <BarChart3 size={18} />, roles: ['supervisor'] },
     { path: '/credit', label: '信用监管', icon: <Shield size={18} />, roles: ['supervisor'] },
+    { path: '/restrictions', label: '限制名单', icon: <Scale size={18} />, roles: ['supervisor'] },
+    { path: '/overdue-milestones', label: '逾期履约', icon: <AlertTriangle size={18} />, roles: ['supervisor'] },
     { path: '/objections/_list', label: '异议管理', icon: <Scale size={18} />, roles: ['supervisor'] },
   ],
 }

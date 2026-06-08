@@ -105,8 +105,17 @@ export default function BidSubmit() {
         rejectReason: vd.reject_reason || vd.rejectReason || undefined,
         creditScore: vr.creditScore,
       })
-    } catch (e) {
-      alert('提交失败，请重试')
+    } catch (e: any) {
+      const errMsg = e?.message || ''
+      if (errMsg.includes('资格受限') || errMsg.includes('限制') || errMsg.includes('拦截')) {
+        setVerifyResult({
+          passed: false,
+          checks: [{ name: '投标资格', passed: false, message: errMsg }],
+          rejectReason: errMsg,
+        })
+      } else {
+        alert('提交失败，请重试')
+      }
     } finally {
       setSubmitting(false)
     }

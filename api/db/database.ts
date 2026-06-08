@@ -361,7 +361,7 @@ function seedData(db: Database.Database): void {
         b.status,
         b.verifyResult,
         b.rejectReason || null,
-        b.encrypted_content || null,
+        Buffer.from(JSON.stringify({ quote: b.quote })).toString('base64'),
         now,
       )
     }

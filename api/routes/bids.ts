@@ -41,6 +41,24 @@ router.post('/', (req: Request, res: Response): void => {
       return
     }
     const db = getDb()
+    db.prepare(`CREATE TABLE IF NOT EXISTS credit_alerts (
+      id TEXT PRIMARY KEY,
+      bidder_id TEXT NOT NULL,
+      threshold REAL DEFAULT 60,
+      status TEXT DEFAULT 'active',
+      restricted INTEGER DEFAULT 1,
+      message TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`).run()
+    const activeRestrictions = db.prepare('SELECT * FROM credit_alerts WHERE bidder_id = ? AND restricted = 1').all(bidderId) as any[]
+    if (activeRestrictions.length > 0) {
+      const reasons = activeRestrictions.map((a: any) => a.message || `信用预警 ${a.id}`).join('；')
+      db.prepare('INSERT INTO credit_records (id, bidder_id, type, score_change, reason, project_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        uuidv4(), bidderId, 'penalty', 0, `投标被拦截：${reasons}`, projectId, new Date().toISOString()
+      )
+      res.status(403).json({ success: false, error: `投标资格受限：${reasons}` })
+      return
+    }
     const id = uuidv4()
     db.prepare(`INSERT INTO bids (id, project_id, bidder_id, quote, documents, key_params, encrypted_content)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
@@ -48,6 +66,9 @@ router.post('/', (req: Request, res: Response): void => {
       JSON.stringify(documents || []),
       JSON.stringify(keyParams || {}),
       Buffer.from(JSON.stringify({ quote, keyParams })).toString('base64'),
+    )
+    db.prepare('INSERT INTO credit_records (id, bidder_id, type, score_change, reason, project_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      uuidv4(), bidderId, 'bid', 1, '提交投标文件', projectId, new Date().toISOString()
     )
     const row = db.prepare('SELECT * FROM bids WHERE id = ?').get(id) as any
     res.status(201).json({ success: true, data: parseBid(row) })

@@ -18,6 +18,8 @@ import ObjectionPage from '@/pages/ObjectionPage'
 import ObjectionList from '@/pages/ObjectionList'
 import Contract from '@/pages/Contract'
 import Credit from '@/pages/Credit'
+import RestrictionList from '@/pages/RestrictionList'
+import OverdueMilestones from '@/pages/OverdueMilestones'
 import Analytics from '@/pages/Analytics'
 
 function ProtectedLayout({ roles }: { roles?: string[] }) {
@@ -50,6 +52,8 @@ export default function App() {
           <Route path="/objections/_list" element={<ProtectedRoute roles={['admin', 'supervisor']}><ObjectionList /></ProtectedRoute>} />
           <Route path="/contracts/:projectId" element={<Contract />} />
           <Route path="/credit" element={<ProtectedRoute roles={['bidder', 'admin', 'supervisor']}><Credit /></ProtectedRoute>} />
+          <Route path="/restrictions" element={<ProtectedRoute roles={['admin', 'supervisor']}><RestrictionList /></ProtectedRoute>} />
+          <Route path="/overdue-milestones" element={<ProtectedRoute roles={['admin', 'supervisor']}><OverdueMilestones /></ProtectedRoute>} />
           <Route path="/analytics" element={<ProtectedRoute roles={['admin', 'supervisor']}><Analytics /></ProtectedRoute>} />
         </Route>
       </Routes>

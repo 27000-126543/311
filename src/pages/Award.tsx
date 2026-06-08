@@ -36,6 +36,7 @@ interface AwardData {
   publicityStart: string
   publicityEnd: string
   bidders: Bidder[]
+  objections?: Objection[]
 }
 
 function ApprovalFlow({ obj }: { obj: Objection }) {

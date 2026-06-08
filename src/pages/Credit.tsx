@@ -1,25 +1,31 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/utils/api'
 import { useAuthStore } from '@/stores/authStore'
 import { GaugeChart, TrendChart, DistributionChart } from '@/components/credit'
 import {
   Award, TrendingUp, TrendingDown, AlertTriangle, Bell,
-  ArrowUpDown, Shield, Star, XCircle,
+  ArrowUpDown, Shield, Star, XCircle, List,
 } from 'lucide-react'
 
 interface CreditRecord {
   id: string
-  time: string
+  created_at: string
   type: string
-  change: number
+  score_change: number
   reason: string
+  project_id: string
   project: string
 }
 
 interface CreditData {
-  score: number
-  trend: { month: string; score: number }[]
+  bidderId: string
+  username: string
+  orgName: string
+  currentScore: number
+  totalChange: number
   records: CreditRecord[]
+  trend: { month: string; score: number }[]
 }
 
 interface AlertItem {
@@ -48,6 +54,7 @@ const typeConfig: Record<string, { bg: string; text: string; label: string }> = 
   breach: { bg: 'bg-red-100', text: 'text-red-700', label: '违约' },
   objection: { bg: 'bg-amber-100', text: 'text-amber-700', label: '异议' },
   penalty: { bg: 'bg-red-100', text: 'text-red-700', label: '处罚' },
+  interception: { bg: 'bg-red-100', text: 'text-red-700', label: '拦截' },
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -106,6 +113,7 @@ function CreditAlertCard({ alert, onSend, onRelease }: { alert: AlertItem; onSen
 
 export default function Credit() {
   const { user, hasRole } = useAuthStore()
+  const navigate = useNavigate()
   const [data, setData] = useState<CreditData | null>(null)
   const [alerts, setAlerts] = useState<AlertItem[]>([])
   const [bidders, setBidders] = useState<BidderScore[]>([])
@@ -120,10 +128,10 @@ export default function Credit() {
       const d = (res as any).data || res
       const lowUsers = d.lowCreditUsers || []
       const existingAlerts = d.alerts || []
-      const alertMap = new Map(existingAlerts.map((a: any) => [a.bidder_id, a]))
+      const alertMap = new Map<string, any>(existingAlerts.map((a: any) => [a.bidder_id, a] as [string, any]))
       const items: AlertItem[] = []
       for (const u of lowUsers) {
-        const existing = alertMap.get(u.id)
+        const existing: any = alertMap.get(u.id)
         items.push({
           bidderId: u.id,
           bidderName: u.org_name || u.username,
@@ -157,28 +165,16 @@ export default function Credit() {
   useEffect(() => {
     const bidderId = isAdmin ? '' : (user?.id || '')
     if (bidderId) {
-      api.get<CreditData>(`/credit/${bidderId}`).then((res) => {
-        const d = (res as any).data || res
-        setData(d)
+      api.get(`/credit/${bidderId}`).then((res) => {
+        const d = (res as any).data
+        if (d) {
+          setData(d)
+        }
       }).catch(() => {
-        setData({
-          score: 78,
-          trend: [
-            { month: '2025-07', score: 72 }, { month: '2025-08', score: 71 },
-            { month: '2025-09', score: 74 }, { month: '2025-10', score: 73 },
-            { month: '2025-11', score: 76 }, { month: '2025-12', score: 75 },
-            { month: '2026-01', score: 77 }, { month: '2026-02', score: 76 },
-            { month: '2026-03', score: 79 }, { month: '2026-04', score: 78 },
-            { month: '2026-05', score: 80 }, { month: '2026-06', score: 78 },
-          ],
-          records: [
-            { id: '1', time: '2026-06-01', type: 'win', change: 5, reason: '中标优质项目', project: '市政道路改造' },
-            { id: '2', time: '2026-05-15', type: 'fulfill', change: 3, reason: '按时完成履约', project: '智慧校园建设' },
-          ],
-        })
+        setData(null)
       }).finally(() => setLoading(false))
     } else {
-      setData({ score: 0, trend: [], records: [] })
+      setData(null)
       setLoading(false)
     }
 
@@ -217,62 +213,89 @@ export default function Credit() {
     } catch { alert('解除限制失败') }
   }
 
-  if (loading || !data) return <div className="text-center py-20 text-slate-400">加载中...</div>
+  if (loading) return <div className="text-center py-20 text-slate-400">加载中...</div>
 
   const sorted = [...bidders].sort((a, b) => sortBy === 'score' ? b.score - a.score : a.name.localeCompare(b.name))
+
+  const showBidderView = !isAdmin && data
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3">
         <Award size={24} className="text-[#C8A45C]" />
         <h1 className="text-xl font-semibold text-[#0F2B46]">信用评价</h1>
+        {data && !isAdmin && <span className="text-sm text-slate-500">{data.orgName || data.username}</span>}
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-[#0F2B46] mb-4 flex items-center gap-2">
-            <Star size={18} className="text-[#C8A45C]" /> 信用评分
-          </h3>
-          <GaugeChart score={data.score} />
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-[#0F2B46] mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-[#C8A45C]" /> 信用趋势（近12月）
-          </h3>
-          <TrendChart data={data.trend} />
-        </div>
-      </div>
+      {showBidderView && (
+        <>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-[#0F2B46] mb-4 flex items-center gap-2">
+                <Star size={18} className="text-[#C8A45C]" /> 信用评分
+              </h3>
+              <GaugeChart score={data.currentScore} />
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-[#0F2B46] mb-4 flex items-center gap-2">
+                <TrendingUp size={18} className="text-[#C8A45C]" /> 信用趋势（近12月）
+              </h3>
+              <TrendChart data={data.trend} />
+            </div>
+          </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100">
-          <h3 className="font-semibold text-[#0F2B46]">信用记录</h3>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-[#0F2B46]">信用记录</h3>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500">
+                  <th className="px-6 py-3 text-left font-medium">时间</th>
+                  <th className="px-6 py-3 text-left font-medium">类型</th>
+                  <th className="px-6 py-3 text-left font-medium">变动</th>
+                  <th className="px-6 py-3 text-left font-medium">原因</th>
+                  <th className="px-6 py-3 text-left font-medium">关联项目</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.records.length === 0 ? (
+                  <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">暂无信用记录</td></tr>
+                ) : (
+                  data.records.map((r) => (
+                    <tr key={r.id} className="border-t border-slate-50">
+                      <td className="px-6 py-3 text-slate-500">{r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '—'}</td>
+                      <td className="px-6 py-3"><TypeBadge type={r.type} /></td>
+                      <td className="px-6 py-3"><ScoreChange change={r.score_change} /></td>
+                      <td className="px-6 py-3 text-slate-700">{r.reason || '—'}</td>
+                      <td className="px-6 py-3 text-slate-500">{r.project || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!isAdmin && !data && (
+        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+          <Award size={48} className="mx-auto text-slate-300 mb-4" />
+          <p className="text-slate-500">暂无信用数据</p>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-50 text-slate-500">
-              <th className="px-6 py-3 text-left font-medium">时间</th>
-              <th className="px-6 py-3 text-left font-medium">类型</th>
-              <th className="px-6 py-3 text-left font-medium">变动</th>
-              <th className="px-6 py-3 text-left font-medium">原因</th>
-              <th className="px-6 py-3 text-left font-medium">关联项目</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.records.map((r) => (
-              <tr key={r.id} className="border-t border-slate-50">
-                <td className="px-6 py-3 text-slate-500">{r.time}</td>
-                <td className="px-6 py-3"><TypeBadge type={r.type} /></td>
-                <td className="px-6 py-3"><ScoreChange change={r.change} /></td>
-                <td className="px-6 py-3 text-slate-700">{r.reason}</td>
-                <td className="px-6 py-3 text-slate-500">{r.project}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
 
       {isAdmin && (
         <>
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/restrictions')}
+              className="flex items-center gap-2 bg-[#0F2B46] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#0F2B46]/90"
+            >
+              <List size={16} /> 限制名单
+            </button>
+          </div>
+
           {alerts.length > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 p-6">
               <h3 className="font-semibold text-red-700 mb-4 flex items-center gap-2">

@@ -58,7 +58,7 @@ export default function BidList() {
   const getName = (b: Bid) => b.projectName || b.project_name || '未知项目'
   const getParams = (b: Bid) => b.keyParams || b.key_params
   const getReason = (b: Bid) => b.reject_reason
-  const getProjectId = (b: Bid) => b.project_id || b.projectId
+  const getProjectId = (b: Bid) => b.project_id
   const getTime = (b: Bid) => b.created_at ? new Date(b.created_at).toLocaleString('zh-CN') : '--'
 
   return (
